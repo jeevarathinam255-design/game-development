@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Run — One-Switch Prototype (ROW-84, standalone)</title>
+<style>
+:root{
+  --bg: #10131a;
+  --panel: #1b1f29;
+  --text: #f0f0f0;
+  --muted: #9aa0ab;
+  --accent: #4da6ff;
+  --good: #37c96f;
+  --bad: #ff4d4d;
+  --scan: #ffd23f;
+  --focus: #ffffff;
+}
+body.hc{
+  --bg: #000000;
+  --panel: #000000;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --accent: #00ffff;
+  --good: #00ff00;
+  --bad: #ff0000;
+  --scan: #ffff00;
+  --focus: #ffffff;
+}
+*{ box-sizing: border-box; }
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: system-ui, Arial, sans-serif;
+  min-height:100vh; display:flex; flex-direction:column; align-items:center;
+  padding:16px;
+}
+h1{ font-size:1.3rem; margin:8px 0 2px 0; }
+.subtitle{ color:var(--muted); font-size:0.85rem; margin-bottom:12px; text-align:center;}
+#app{ width:100%; max-width:820px; }
+
+.topbar{
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--panel); border:2px solid var(--muted);
+  padding:8px 14px; border-radius:8px; margin-bottom:12px; flex-wrap:wrap; gap:8px;
+}
+.stat{ font-size:0.95rem; }
+.stat b{ color:var(--accent); }
+
+#gameArea{
+  position:relative; background:var(--panel); border:3px solid var(--muted);
+  border-radius:10px; height:220px; overflow:hidden; margin-bottom:14px;
+}
+#track{
+  position:absolute; bottom:40px; left:0; right:0; height:4px; background:var(--muted);
+}
+#player{
+  position:absolute; bottom:44px; left:60px; width:40px; height:40px;
+  background:var(--accent); border-radius:6px;
+  display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+  transition: transform 0.15s ease;
+}
+.obstacle{
+  position:absolute; bottom:44px; width:36px; height:36px; border-radius:6px;
+  display:flex; align-items:center; justify-content:center; font-size:1.2rem;
+  background:var(--bad); color:var(--text);
+}
+.obstacle.duckType{ background:#c07a1f; }
+.obstacle.waitType{ background:#8a4dff; }
+
+#flash{
+  position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity 0.15s;
+}
+#flash.good{ background:var(--good); opacity:0.35; }
+#flash.bad{ background:var(--bad); opacity:0.4; }
+
+#scanPanel{
+  display:flex; gap:10px; margin-bottom:14px;
+}
+.scanBox{
+  flex:1; background:var(--panel); border:3px solid var(--muted);
+  border-radius:8px; padding:16px 8px; text-align:center; font-size:1.1rem;
+  font-weight:600; position:relative; transition: all 0.1s ease;
+}
+.scanBox .key{ display:block; font-size:0.75rem; color:var(--muted); margin-top:4px; font-weight:400;}
+.scanBox.active{
+  border-color:var(--scan); box-shadow:0 0 0 3px var(--scan) inset;
+  transform: scale(1.04);
+}
+.scanBox.active::before{
+  content:"► SELECT ►";
+  position:absolute; top:-22px; left:50%; transform:translateX(-50%);
+  font-size:0.7rem; color:var(--scan); white-space:nowrap;
+}
+
+#captionBar{
+  min-height:28px; background:#000; color:#fff; border-radius:6px;
+  padding:6px 12px; font-size:0.95rem; margin-bottom:14px; text-align:center;
+  border:1px solid var(--muted);
+}
+
+#controls{
+  background:var(--panel); border:2px solid var(--muted); border-radius:8px;
+  padding:14px; display:grid; gap:12px; grid-template-columns: 1fr 1fr;
+  margin-bottom:14px;
+}
+#controls label{ display:flex; flex-direction:column; gap:4px; font-size:0.85rem; }
+#controls input[type=range]{ width:100%; }
+.fullrow{ grid-column: 1 / -1; }
+button{
+  background:var(--accent); color:#0a0a0a; border:none; border-radius:6px;
+  padding:10px 14px; font-size:0.9rem; font-weight:700; cursor:pointer;
+}
+button:focus, .scanBox:focus, input:focus{
+  outline:3px solid var(--focus); outline-offset:2px;
+}
+button.secondary{ background:transparent; color:var(--text); border:2px solid var(--muted); }
+button.small{ padding:4px 8px; font-size:0.75rem; margin-left:8px; }
+.row{ display:flex; gap:10px; flex-wrap:wrap; }
+.checkline{ display:flex; align-items:center; gap:8px; font-size:0.85rem; }
+
+#leaderboardPanel{
+  background:var(--panel); border:2px solid var(--muted); border-radius:8px;
+  padding:14px; margin-bottom:14px;
+}
+#leaderboardPanel h2{ font-size:1rem; margin:0 0 8px 0; display:flex; align-items:center; }
+#leaderboardList{ margin:0; padding-left:20px; font-size:0.9rem; }
+#leaderboardList li{ margin-bottom:4px; }
+
+#instructions{
+  font-size:0.8rem; color:var(--muted); margin-top:10px; line-height:1.5;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>🎮 Signal Run — One-Switch Prototype</h1>
+  <p class="subtitle">ROW-84 standalone build · Press SPACE (or click) as your single switch input · leaderboard saved in this browser</p>
+
+  <div class="topbar">
+    <div class="stat">Score: <b id="score">0</b></div>
+    <div class="stat">Streak: <b id="streak">0</b></div>
+    <div class="stat">Status: <b id="status">Ready</b></div>
+    <div class="stat">Best: <b id="bestScore">–</b></div>
+  </div>
+
+  <div id="gameArea" aria-hidden="true">
+    <div id="flash"></div>
+    <div id="track"></div>
+    <div id="player">🟦</div>
+  </div>
+
+  <div id="captionBar" role="status" aria-live="polite">Welcome. Press your switch to start scanning.</div>
+
+  <div id="scanPanel" role="group" aria-label="Action selector — one switch cycles and selects">
+    <div class="scanBox" id="box-jump" tabindex="-1">JUMP<span class="key">obstacle: low block</span></div>
+    <div class="scanBox" id="box-duck" tabindex="-1">DUCK<span class="key">obstacle: high bar</span></div>
+    <div class="scanBox" id="box-wait" tabindex="-1">WAIT<span class="key">no obstacle</span></div>
+  </div>
+
+  <div id="controls">
+    <label class="fullrow">
+      <span>Scan speed: <span id="scanSpeedLabel">1.2s</span> per step (Difficulty Assist)</span>
+      <input type="range" id="scanSpeed" min="500" max="4000" step="100" value="1200" aria-label="Scan speed in milliseconds">
+    </label>
+
+    <label>
+      <span class="checkline"><input type="checkbox" id="hcToggle"> High-contrast mode</span>
+    </label>
+    <label>
+      <span class="checkline"><input type="checkbox" id="cbToggle"> Colorblind-safe shapes/labels (always on)</span>
+    </label>
+    <label>
+      <span class="checkline"><input type="checkbox" id="captionToggle" checked> Show captions</span>
+    </label>
+    <label>
+      <span class="checkline"><input type="checkbox" id="assistToggle"> Difficulty Assist: auto-slow after misses</span>
+    </label>
+
+    <div class="row fullrow">
+      <button id="startBtn">Start / Press Switch to Begin</button>
+      <button id="pauseBtn" class="secondary">Pause</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+      <button id="submitScoreBtn" class="secondary">Save Score</button>
+    </div>
+  </div>
+
+  <div id="leaderboardPanel">
+    <h2>Leaderboard <button id="refreshLbBtn" class="secondary small">Refresh</button> <button id="clearLbBtn" class="secondary small">Clear</button></h2>
+    <ol id="leaderboardList"><li>Loading…</li></ol>
+  </div>
+
+  <p id="instructions">
+    <b>How this maps to real switch hardware:</b> the SPACE key here stands in for a single external
+    switch (jelly-bean switch, sip-puff, foot pedal, etc.) wired through a USB adapter or Bluetooth
+    switch interface. Swapping the keydown listener below for a Gamepad API / WebHID event is the
+    only change needed. Obstacles are shape- and label-coded (not color-only) for colorblind users.
+    Screen reader users get status changes via the captions region (aria-live). This standalone build
+    stores the leaderboard in your browser's <code>localStorage</code> instead of a backend server.
+  </p>
+</div>
+
+<script>
+(function(){
+  // ---- "Backend" — leaderboard persisted to localStorage instead of a Node/Express API ----
+  const STORAGE_KEY = 'signalRunScores';
+
+  const SignalRunAPI = {
+    getScores(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const scores = raw ? JSON.parse(raw) : [];
+        scores.sort((a, b) => b.score - a.score);
+        return { scores };
+      }catch(err){
+        console.warn('Could not read local leaderboard:', err.message);
+        return { scores: [], offline: true };
+      }
+    },
+    submitScore(name, score){
+      try{
+        if(typeof name !== 'string' || name.trim().length === 0){
+          return { ok:false, error:'name is required' };
+        }
+        if(typeof score !== 'number' || Number.isNaN(score) || score < 0){
+          return { ok:false, error:'score must be a non-negative number' };
+        }
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const scores = raw ? JSON.parse(raw) : [];
+        scores.push({
+          name: name.trim().slice(0, 20),
+          score: Math.floor(score),
+          date: new Date().toISOString()
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(scores));
+        return { ok: true };
+      }catch(err){
+        console.warn('Could not save score locally:', err.message);
+        return { ok:false, offline:true };
+      }
+    },
+    clearScores(){
+      try{ localStorage.removeItem(STORAGE_KEY); return { ok:true }; }
+      catch(err){ return { ok:false }; }
+    }
+  };
+
+  // ---- Frontend — game loop, single-switch scan input, accessibility features ----
+  const scanBoxes = [
+    { el: document.getElementById('box-jump'), type: 'jump' },
+    { el: document.getElementById('box-duck'), type: 'duck' },
+    { el: document.getElementById('box-wait'), type: 'wait' }
+  ];
+  let scanIndex = 0;
+  let scanTimer = null;
+  let scanSpeedMs = 1200;
+  let running = false;
+  let paused = false;
+
+  const player = document.getElementById('player');
+  const gameArea = document.getElementById('gameArea');
+  const flash = document.getElementById('flash');
+  const captionBar = document.getElementById('captionBar');
+  const scoreEl = document.getElementById('score');
+  const streakEl = document.getElementById('streak');
+  const statusEl = document.getElementById('status');
+  const bestScoreEl = document.getElementById('bestScore');
+
+  const scanSpeedInput = document.getElementById('scanSpeed');
+  const scanSpeedLabel = document.getElementById('scanSpeedLabel');
+  const hcToggle = document.getElementById('hcToggle');
+  const captionToggle = document.getElementById('captionToggle');
+  const assistToggle = document.getElementById('assistToggle');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const submitScoreBtn = document.getElementById('submitScoreBtn');
+  const refreshLbBtn = document.getElementById('refreshLbBtn');
+  const clearLbBtn = document.getElementById('clearLbBtn');
+  const leaderboardList = document.getElementById('leaderboardList');
+
+  let score = 0, streak = 0, misses = 0;
+  let obstacles = [];
+  let spawnTimer = null;
+  let loopTimer = null;
+  const AREA_WIDTH = 820;
+  const PLAYER_X = 60;
+  const SPEED_PX_PER_TICK = 4;
+
+  function caption(msg){
+    if(!captionToggle.checked){ captionBar.textContent = ''; return; }
+    captionBar.textContent = msg;
+  }
+
+  function setActiveBox(i){
+    scanBoxes.forEach((b, idx)=> b.el.classList.toggle('active', idx===i));
+  }
+
+  function startScanLoop(){
+    clearInterval(scanTimer);
+    scanTimer = setInterval(()=>{
+      if(paused) return;
+      scanIndex = (scanIndex + 1) % scanBoxes.length;
+      setActiveBox(scanIndex);
+    }, scanSpeedMs);
+  }
+
+  function updateScanSpeedLabel(){
+    scanSpeedLabel.textContent = (scanSpeedMs/1000).toFixed(1) + 's';
+  }
+
+  scanSpeedInput.addEventListener('input', (e)=>{
+    scanSpeedMs = parseInt(e.target.value, 10);
+    updateScanSpeedLabel();
+    if(running) startScanLoop();
+  });
+
+  hcToggle.addEventListener('change', ()=>{
+    document.body.classList.toggle('hc', hcToggle.checked);
+    caption(hcToggle.checked ? 'High contrast mode on.' : 'High contrast mode off.');
+  });
+
+  function spawnObstacle(){
+    if(!running || paused) return;
+    const types = ['jump','duck','wait'];
+    const type = types[Math.floor(Math.random()*types.length)];
+    const el = document.createElement('div');
+    el.className = 'obstacle ' + (type==='duck' ? 'duckType' : type==='wait' ? 'waitType' : '');
+    el.style.right = '-40px';
+    el.style.bottom = '44px';
+    if(type === 'jump'){ el.textContent = '▲'; el.setAttribute('aria-label','low block, jump'); }
+    else if(type === 'duck'){ el.textContent = '▬'; el.setAttribute('aria-label','high bar, duck'); }
+    else { el.textContent = '·'; el.setAttribute('aria-label','no obstacle, wait'); }
+    gameArea.appendChild(el);
+    obstacles.push({ el, type, x: AREA_WIDTH - 40, resolved:false });
+    if(type !== 'wait'){
+      caption(type === 'jump' ? 'Sound: low hum — block ahead, jump.' : 'Sound: buzz — bar ahead, duck.');
+    }
+  }
+
+  function gameTick(){
+    if(paused) return;
+    obstacles.forEach(o=>{
+      o.x -= SPEED_PX_PER_TICK;
+      o.el.style.right = (AREA_WIDTH - o.x - 40) + 'px';
+      if(!o.resolved && o.x <= PLAYER_X + 40 && o.x >= PLAYER_X){
+        o.resolved = 'zone';
+      }
+    });
+    obstacles = obstacles.filter(o=>{
+      if(o.x < -40){
+        if(o.resolved !== 'hit' && o.type !== 'wait'){
+          missAction();
+        }
+        o.el.remove();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function flashFx(cls){
+    flash.className = '';
+    void flash.offsetWidth;
+    flash.classList.add(cls);
+    setTimeout(()=> flash.className = '', 200);
+  }
+
+  function hitAction(success){
+    if(success){
+      score += 10;
+      streak += 1;
+      flashFx('good');
+      caption('Nice! Correct action.');
+    } else {
+      missAction();
+    }
+    scoreEl.textContent = score;
+    streakEl.textContent = streak;
+  }
+
+  function missAction(){
+    streak = 0;
+    misses += 1;
+    flashFx('bad');
+    caption('Missed — try the next one.');
+    streakEl.textContent = streak;
+    if(assistToggle.checked && misses % 2 === 0){
+      scanSpeedMs = Math.min(4000, scanSpeedMs + 300);
+      scanSpeedInput.value = scanSpeedMs;
+      updateScanSpeedLabel();
+      if(running) startScanLoop();
+      caption('Difficulty Assist: slowing scan speed to help.');
+    }
+  }
+
+  function onSwitchPress(){
+    if(!running){
+      startGame();
+      return;
+    }
+    if(paused) return;
+    const chosen = scanBoxes[scanIndex].type;
+    const target = obstacles.find(o => !o.resolved && o.x <= PLAYER_X + 60 && o.x >= PLAYER_X - 10);
+    player.style.transform = chosen === 'jump' ? 'translateY(-24px)' :
+                              chosen === 'duck' ? 'translateY(10px) scaleY(0.6)' : 'none';
+    setTimeout(()=> player.style.transform = 'none', 150);
+
+    if(target){
+      const correct = target.type === chosen;
+      target.resolved = correct ? 'hit' : 'wrongHit';
+      hitAction(correct);
+    } else {
+      caption('Nothing to respond to right now.');
+    }
+  }
+
+  function startGame(){
+    running = true; paused = false;
+    score = 0; streak = 0; misses = 0;
+    scoreEl.textContent = 0; streakEl.textContent = 0;
+    statusEl.textContent = 'Running';
+    obstacles.forEach(o=>o.el.remove());
+    obstacles = [];
+    setActiveBox(0);
+    startScanLoop();
+    clearInterval(spawnTimer);
+    spawnTimer = setInterval(spawnObstacle, 1800);
+    clearInterval(loopTimer);
+    loopTimer = setInterval(gameTick, 30);
+    caption('Game started. Scanning JUMP, DUCK, WAIT — press switch to select.');
+  }
+
+  function togglePause(){
+    if(!running) return;
+    paused = !paused;
+    statusEl.textContent = paused ? 'Paused' : 'Running';
+    caption(paused ? 'Paused.' : 'Resumed.');
+  }
+
+  function resetGame(){
+    running = false; paused = false;
+    clearInterval(scanTimer); clearInterval(spawnTimer); clearInterval(loopTimer);
+    obstacles.forEach(o=>o.el.remove());
+    obstacles = [];
+    score = 0; streak = 0; misses = 0;
+    scoreEl.textContent = 0; streakEl.textContent = 0;
+    statusEl.textContent = 'Ready';
+    setActiveBox(0);
+    caption('Reset. Press your switch to start.');
+  }
+
+  startBtn.addEventListener('click', ()=>{ if(!running) startGame(); });
+  pauseBtn.addEventListener('click', togglePause);
+  resetBtn.addEventListener('click', resetGame);
+
+  // The single switch input: SPACE key or click anywhere on game area.
+  // Swap this listener for Gamepad API / WebHID input to support real switch hardware.
+  window.addEventListener('keydown', (e)=>{
+    if(e.code === 'Space'){
+      e.preventDefault();
+      onSwitchPress();
+    }
+  });
+  gameArea.addEventListener('click', onSwitchPress);
+
+  // ---- Leaderboard wiring (localStorage-backed) ----
+  function loadLeaderboard(){
+    leaderboardList.innerHTML = '<li>Loading…</li>';
+    const data = SignalRunAPI.getScores();
+    if(data.offline){
+      leaderboardList.innerHTML = '<li>Could not read local leaderboard.</li>';
+      return;
+    }
+    if(!data.scores || data.scores.length === 0){
+      leaderboardList.innerHTML = '<li>No scores yet — be the first!</li>';
+      bestScoreEl.textContent = '–';
+      return;
+    }
+    leaderboardList.innerHTML = '';
+    data.scores.slice(0, 10).forEach(entry=>{
+      const li = document.createElement('li');
+      li.textContent = `${entry.name}: ${entry.score}`;
+      leaderboardList.appendChild(li);
+    });
+    bestScoreEl.textContent = data.scores[0] ? data.scores[0].score : '–';
+  }
+
+  submitScoreBtn.addEventListener('click', ()=>{
+    const name = prompt('Name for the leaderboard (max 20 chars):', 'Player') || 'Player';
+    const result = SignalRunAPI.submitScore(name.slice(0,20), score);
+    if(!result.ok){
+      caption('Could not save score: ' + (result.error || 'unknown error'));
+    } else {
+      caption('Score saved to leaderboard.');
+      loadLeaderboard();
+    }
+  });
+
+  refreshLbBtn.addEventListener('click', loadLeaderboard);
+  clearLbBtn.addEventListener('click', ()=>{
+    if(confirm('Clear the local leaderboard?')){
+      SignalRunAPI.clearScores();
+      loadLeaderboard();
+      caption('Leaderboard cleared.');
+    }
+  });
+
+  updateScanSpeedLabel();
+  setActiveBox(0);
+  loadLeaderboard();
+})();
+</script>
+</body>
+</html>
